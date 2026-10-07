@@ -1,0 +1,21 @@
+{
+  "name": "civichelp",
+  "version": "1.0.0",
+  "description": "CivicHelp civic assistance PWA backend and static frontend",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "civichelp",
+    "pwa",
+    "express",
+    "public-gathering"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.12.0"
+  }
+}

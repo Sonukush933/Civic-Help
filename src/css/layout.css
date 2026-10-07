@@ -1,0 +1,126 @@
+@media (max-width: 359px) {
+  .g3 .btn {
+    font-size: 0.78rem;
+  }
+  .brand small {
+    display: none;
+  }
+  .locb {
+    padding: 0 10px;
+  }
+  .two {
+    grid-template-columns: 1fr;
+  }
+  .upd .top {
+    flex-direction: column;
+  }
+  .hd2 {
+    flex-wrap: wrap;
+  }
+}
+@media (min-width: 600px) {
+  .g3 .btn {
+    flex-direction: row;
+    min-height: 56px;
+  }
+  .near {
+    flex-basis: 176px;
+  }
+}
+@media (min-width: 900px) {
+  body {
+    padding-bottom: 30px;
+  }
+  .bn {
+    display: none;
+  }
+  .hi {
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 8px 24px;
+  }
+  .h1r {
+    display: contents;
+  }
+  .h2r {
+    grid-column: 1/-1;
+    order: 5;
+  }
+  .tn {
+    display: flex;
+    gap: 4px;
+    justify-self: center;
+  }
+  .tn button {
+    flex-direction: row;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 14px;
+    max-width: none;
+    flex: none;
+    border-radius: 12px;
+    font-size: 0.92rem;
+  }
+  .tn button:hover {
+    background: var(--beige);
+  }
+  .tn button::after {
+    bottom: 0;
+  }
+  .tn .dot {
+    top: 8px;
+    left: auto;
+    margin-left: 62px;
+  }
+  .two-c {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+    gap: clamp(18px, 2.4vw, 30px);
+    align-items: start;
+  }
+  .two-c.eq {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .two-c.mp {
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  }
+  .scroll {
+    flex-wrap: wrap;
+    overflow: visible;
+    margin: 0;
+    padding: 0;
+  }
+  .near {
+    flex: 1 1 150px;
+  }
+  .chips {
+    margin: 0;
+    padding: 2px 0 4px;
+    flex-wrap: wrap;
+  }
+  .sheet {
+    align-items: center;
+  }
+  .sp {
+    border-radius: 24px;
+    max-height: 80vh;
+    padding-top: 20px;
+  }
+  .grab {
+    display: none;
+  }
+  #toast {
+    bottom: 30px;
+  }
+}
+@media (min-width: 900px) {
+  .brand {
+    order: 0;
+  }
+  .tn {
+    order: 1;
+  }
+  .locb {
+    order: 2;
+  }
+}
