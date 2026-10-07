@@ -36,9 +36,28 @@ async function fetchJson(url, options = {}) {
     const response = await fetch(url, { ...options, signal: controller.signal, headers: { Accept: 'application/json', ...(options.headers || {}) } });
     const text = await response.text();
     if (!response.ok) {
-      throw new Error(response.status + ': ' + text.slice(0, 200));
+      const error = new Error(`Upstream returned HTTP ${response.status}`);
+      error.status = response.status;
+      error.responseBody = text.slice(0, 500);
+      throw error;
     }
-    return text ? JSON.parse(text) : null;
+    try {
+      return text ? JSON.parse(text) : null;
+    } catch (error) {
+      error.message = `Upstream returned invalid JSON: ${error.message}`;
+      throw error;
+    }
+  } catch (error) {
+    const target = new URL(url);
+    console.error('Upstream JSON request failed:', JSON.stringify({
+      provider: target.hostname,
+      endpoint: target.pathname,
+      status: error.status || null,
+      responseBody: error.responseBody || null,
+      timeout: controller.signal.aborted,
+      error: controller.signal.aborted ? 'request timed out after 12000ms' : `${error.cause && error.cause.code ? error.cause.code + ': ' : ''}${error.message}`.slice(0, 500),
+    }));
+    throw error;
   } finally {
     clearTimeout(timeout);
   }
@@ -241,14 +260,23 @@ async function findNearbyFacilities({ lat, lng, category = 'all' }) {
 }
 
 async function getLiveWeather(lat, lng) {
-  const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,apparent_temperature,precipitation,weather_code&hourly=precipitation_probability&timezone=auto&forecast_days=1`;
-  const payload = await fetchJson(weatherUrl);
+  const weatherUrl = new URL('https://api.open-meteo.com/v1/forecast');
+  weatherUrl.search = new URLSearchParams({
+    latitude: String(lat),
+    longitude: String(lng),
+    current: 'temperature_2m,apparent_temperature,weather_code',
+    hourly: 'precipitation_probability',
+    timezone: 'auto',
+  }).toString();
+  const payload = await fetchJson(weatherUrl.toString());
   const current = payload.current || {};
   const hourly = payload.hourly || { time: [], precipitation_probability: [] };
   if (current.temperature_2m == null || current.weather_code == null || !current.time) {
-    throw new Error('Open-Meteo response did not include current conditions');
+    throw new Error('Open-Meteo returned a response without required current weather fields');
   }
-  const hourIndex = hourly.time.findIndex((time) => time === current.time);
+  const hourIndex = Array.isArray(hourly.time)
+    ? hourly.time.findIndex((time) => time.slice(0, 13) === current.time.slice(0, 13))
+    : -1;
   const rainProbability = hourIndex >= 0 && hourly.precipitation_probability?.[hourIndex] != null
     ? Number(hourly.precipitation_probability[hourIndex])
     : null;
@@ -433,8 +461,8 @@ app.get('/api/emergency', async (req, res) => {
 });
 
 app.get('/api/weather', async (req, res) => {
-  const lat = Number(req.query.lat);
-  const lng = Number(req.query.lng);
+  const lat = typeof req.query.lat === 'string' && req.query.lat.trim() ? Number(req.query.lat) : NaN;
+  const lng = typeof req.query.lng === 'string' && req.query.lng.trim() ? Number(req.query.lng) : NaN;
 
   if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lng) || lng < -180 || lng > 180) {
     return res.status(400).json({ error: 'Valid device latitude and longitude are required for local weather.' });
