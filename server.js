@@ -49,11 +49,28 @@ async function fetchJson(url, options = {}) {
     }
   } catch (error) {
     const target = new URL(url);
+    let responseBody = error.responseBody || null;
+    if (responseBody) {
+      for (const key of ['latitude', 'longitude', 'lat', 'lon']) {
+        const coordinate = target.searchParams.get(key);
+        if (coordinate) responseBody = responseBody.split(coordinate).join('[redacted]');
+      }
+    }
+    const category = error.status
+      ? 'http'
+      : controller.signal.aborted
+        ? 'timeout'
+        : error.message.startsWith('Upstream returned invalid JSON')
+          ? 'invalid-json'
+          : error.cause
+            ? 'network'
+            : 'upstream-error';
     console.error('Upstream JSON request failed:', JSON.stringify({
       provider: target.hostname,
       endpoint: target.pathname,
+      category,
       status: error.status || null,
-      responseBody: error.responseBody || null,
+      responseBody,
       timeout: controller.signal.aborted,
       error: controller.signal.aborted ? 'request timed out after 12000ms' : `${error.cause && error.cause.code ? error.cause.code + ': ' : ''}${error.message}`.slice(0, 500),
     }));
@@ -291,6 +308,100 @@ async function getLiveWeather(lat, lng) {
   };
 }
 
+const MET_WEATHER_CODES = {
+  clearsky: 'Clear sky',
+  fair: 'Mostly clear',
+  partlycloudy: 'Partly cloudy',
+  cloudy: 'Overcast',
+  fog: 'Fog',
+  lightrain: 'Light rain',
+  rain: 'Rain',
+  heavyrain: 'Heavy rain',
+  lightrainshowers: 'Light rain showers',
+  rainshowers: 'Rain showers',
+  heavyrainshowers: 'Heavy rain showers',
+  lightrainandthunder: 'Light rain and thunder',
+  rainandthunder: 'Rain and thunder',
+  heavyrainandthunder: 'Heavy rain and thunder',
+  lightsleet: 'Light sleet',
+  sleet: 'Sleet',
+  heavysleet: 'Heavy sleet',
+  lightsleetshowers: 'Light sleet showers',
+  sleetshowers: 'Sleet showers',
+  heavysleetshowers: 'Heavy sleet showers',
+  lightsnow: 'Light snow',
+  snow: 'Snow',
+  heavysnow: 'Heavy snow',
+  lightsnowshowers: 'Light snow showers',
+  snowshowers: 'Snow showers',
+  heavysnowshowers: 'Heavy snow showers',
+  lightsnowandthunder: 'Light snow and thunder',
+  snowandthunder: 'Snow and thunder',
+  heavysnowandthunder: 'Heavy snow and thunder',
+};
+
+async function getMetNorwayWeather(lat, lng) {
+  const weatherUrl = new URL('https://api.met.no/weatherapi/locationforecast/2.0/compact');
+  weatherUrl.search = new URLSearchParams({ lat: String(lat), lon: String(lng) }).toString();
+  const payload = await fetchJson(weatherUrl.toString(), {
+    headers: { 'User-Agent': 'CivicHelp/1.0 (https://github.com/Sonukush933/Civic-Help)' },
+  });
+  const series = payload && payload.properties && payload.properties.timeseries;
+  if (!Array.isArray(series) || !series.length) {
+    throw new Error('MET Norway returned no forecast timeseries');
+  }
+  const now = Date.now();
+  const current = series.reduce((closest, entry) => {
+    const entryTime = Date.parse(entry.time);
+    const closestTime = Date.parse(closest.time);
+    return Math.abs(entryTime - now) < Math.abs(closestTime - now) ? entry : closest;
+  });
+  const details = current.data && current.data.instant && current.data.instant.details;
+  if (!details || !Number.isFinite(Number(details.air_temperature))) {
+    throw new Error('MET Norway returned no current air temperature');
+  }
+  const rawSymbol = current.data.next_1_hours && current.data.next_1_hours.summary && current.data.next_1_hours.summary.symbol_code;
+  const symbol = typeof rawSymbol === 'string'
+    ? rawSymbol.replace(/_(day|night|polartwilight)$/, '')
+    : '';
+  const time = new Date(current.time);
+  return {
+    temp_c: Number(details.air_temperature),
+    feels_like_c: null,
+    condition: MET_WEATHER_CODES[symbol] || 'Current conditions available',
+    rain_probability: null,
+    updated_label: `MET Norway forecast ${time.toISOString().slice(11, 16)} UTC`,
+    city: 'Live location',
+  };
+}
+
+async function getWeatherWithFallback(lat, lng) {
+  try {
+    return await getLiveWeather(lat, lng);
+  } catch (primaryError) {
+    console.warn('Primary live weather provider failed; trying fallback:', JSON.stringify({
+      provider: 'api.open-meteo.com',
+      endpoint: '/v1/forecast',
+      category: primaryError.status ? 'http' : primaryError.name === 'AbortError' ? 'timeout' : primaryError.cause ? 'network' : 'upstream-error',
+      status: primaryError.status || null,
+    }));
+    try {
+      return await getMetNorwayWeather(lat, lng);
+    } catch (fallbackError) {
+      console.error('All live weather providers failed:', JSON.stringify({
+        primaryProvider: 'api.open-meteo.com',
+        primaryEndpoint: '/v1/forecast',
+        fallbackProvider: 'api.met.no',
+        fallbackEndpoint: '/weatherapi/locationforecast/2.0/compact',
+        fallbackCategory: fallbackError.status ? 'http' : fallbackError.name === 'AbortError' ? 'timeout' : fallbackError.cause ? 'network' : 'upstream-error',
+        fallbackStatus: fallbackError.status || null,
+        fallbackError: fallbackError.message.slice(0, 300),
+      }));
+      throw new Error('All live weather providers failed');
+    }
+  }
+}
+
 async function ensureDb() {
   if (!pgPool) return null;
   try {
@@ -468,11 +579,10 @@ app.get('/api/weather', async (req, res) => {
     return res.status(400).json({ error: 'Valid device latitude and longitude are required for local weather.' });
   }
   try {
-    const weather = await getLiveWeather(lat, lng);
+    const weather = await getWeatherWithFallback(lat, lng);
     return res.json({ data: weather });
   } catch (error) {
-    console.warn('Live weather lookup failed:', error.message);
-    return res.status(502).json({ error: 'Live weather service unavailable' });
+    return res.status(503).json({ error: 'Live weather providers are temporarily unavailable' });
   }
 });
 

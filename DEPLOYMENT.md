@@ -33,7 +33,7 @@ CORS_ORIGINS=https://owner.github.io
 DATABASE_URL=
 ```
 
-Never commit a real database URL. No API keys are required by the current OpenStreetMap, Photon, or Open-Meteo integrations. Check provider terms and availability before production launch.
+Never commit a real database URL. No API keys are required by the current OpenStreetMap, Photon, Open-Meteo, or MET Norway integrations. Weather uses Open-Meteo first, then the MET Norway Locationforecast API if the primary provider is unavailable or rate-limited. MET Norway's public forecast API requires an identifying `User-Agent`, but no API key; the backend sends one. Respect MET Norway's [API terms](https://api.met.no/doc/TermsOfService) and [Locationforecast documentation](https://api.met.no/doc/locationforecast/), including attribution and fair-use requirements. Check provider availability and terms before production launch.
 
 ## Production smoke checks
 
